@@ -1,7 +1,8 @@
 'use client';
 import { useState, useEffect } from 'react';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+// Use environment variable or fallback to your deployed backend
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://pomodoro-node.vercel.app';
 
 export default function Home() {
   const [timerState, setTimerState] = useState({
@@ -22,7 +23,7 @@ export default function Home() {
   const [darkMode, setDarkMode] = useState(false);
   const [audio] = useState(typeof Audio !== "undefined" ? new Audio("/alarm.mp3") : null);
 
-  // Initialize on component mount
+  // Initialize
   useEffect(() => {
     const savedMode = localStorage.getItem('darkMode');
     if (savedMode !== null) {
@@ -36,15 +37,15 @@ export default function Home() {
     localStorage.setItem('darkMode', darkMode.toString());
   }, [darkMode]);
 
-  // Fetch timer state from backend
+  // Fetch timer state
   useEffect(() => {
     const fetchTimerState = async () => {
       try {
-        const response = await fetch('https://pomodoro-node.vercel.app/api/timer/state');
+        const response = await fetch(`${API_BASE_URL}/api/timer/state`);
         const state = await response.json();
         setTimerState(state);
       } catch (error) {
-        console.log('Backend not connected yet');
+        console.log('Backend not connected');
       }
     };
 
@@ -53,11 +54,11 @@ export default function Home() {
     return () => clearInterval(interval);
   }, []);
 
-  // Fetch stats from backend
+  // Fetch stats
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const response = await fetch('https://pomodoro-node.vercel.app/api/timer/stats');
+        const response = await fetch(`${API_BASE_URL}/api/timer/stats`);
         const data = await response.json();
         setStats(data);
       } catch (error) {
@@ -70,10 +71,10 @@ export default function Home() {
     return () => clearInterval(interval);
   }, []);
 
-  // Play sound when timer reaches 0
+  // Play sound when timer completes
   useEffect(() => {
     if (timerState.timeLeft === 0 && audio) {
-      audio.play().catch(e => console.log('Audio play failed:', e));
+      audio.play().catch(e => console.log('Audio play failed'));
     }
   }, [timerState.timeLeft, audio]);
 
@@ -98,97 +99,69 @@ export default function Home() {
       }
       if (event.code === 'KeyD') {
         event.preventDefault();
-        toggleDarkMode();
+        setDarkMode(!darkMode);
       }
     };
 
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
-  }, [timerState.isRunning]);
+  }, [timerState.isRunning, darkMode]);
 
-  // Format seconds to MM:SS
+  // Format time
   const formatTime = (seconds) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // Calculate progress for circular bar
+  // Calculate progress
   const totalTime = timerState.isFocus ? 25 * 60 : 5 * 60;
   const progress = ((totalTime - timerState.timeLeft) / totalTime) * 100;
   const radius = 45;
   const circumference = 2 * Math.PI * radius;
   const strokeDashoffset = circumference - (progress / 100) * circumference;
 
-  // Button handlers
-  const startTimer = async () => {
+  // API calls
+  const apiCall = async (endpoint) => {
     try {
-      const data = await apiFetch('https://pomodoro-node.vercel.app/api/timer/start', { method: 'POST' });
-      setTimerState(data.state);
+      const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+        method: 'POST'
+      });
+      const data = await response.json();
+      if (data.success) {
+        setTimerState(data.state);
+      }
     } catch (error) {
-      console.error('Error starting timer:', error);
+      console.error('API error:', error);
     }
   };
 
-  const pauseTimer = async () => {
-    try {
-      const data = await apiFetch('https://pomodoro-node.vercel.app/api/timer/pause', { method: 'POST' });
-      setTimerState(data.state);
-    } catch (error) {
-      console.error('Error pausing timer:', error);
-    }
-  };
+  const startTimer = () => apiCall('/api/timer/start');
+  const pauseTimer = () => apiCall('/api/timer/pause');
+  const resetTimer = () => apiCall('/api/timer/reset');
+  const switchMode = () => apiCall('/api/timer/switch');
 
-  const resetTimer = async () => {
-    try {
-      const data = await apiFetch('https://pomodoro-node.vercel.app/api/timer/reset', { method: 'POST' });
-      setTimerState(data.state);
-    } catch (error) {
-      console.error('Error resetting timer:', error);
-    }
-  };
-
-  const switchMode = async () => {
-    try {
-      const data = await apiFetch('https://pomodoro-node.vercel.app/api/timer/switch', { method: 'POST' });
-      setTimerState(data.state);
-    } catch (error) {
-      console.error('Error switching mode:', error);
-    }
-  };
-
-
-  const toggleDarkMode = () => {
-    setDarkMode(!darkMode);
-  };
-
-  // Dynamic styles based on dark mode
+  // Styles based on dark mode
   const getStyles = () => {
     if (darkMode) {
       return {
         main: "min-h-screen bg-gray-900 text-white flex items-center justify-center p-4",
-        container: "bg-gray-800 text-white border-gray-700",
         card: "bg-gray-800 border border-gray-700 rounded-2xl shadow-xl p-6",
         textMuted: "text-gray-400",
-        textNormal: "text-gray-300",
-        buttonPrimary: "bg-white text-black hover:bg-gray-200",
-        buttonSecondary: "border border-gray-600 text-gray-300 hover:border-gray-500",
+        buttonPrimary: "bg-white text-black hover:bg-gray-200 px-8 py-3 rounded-lg font-medium transition-colors duration-200 text-sm",
+        buttonSecondary: "border border-gray-600 text-gray-300 hover:border-gray-500 px-8 py-3 rounded-lg font-medium transition-colors duration-200 text-sm",
         progressBg: "#374151",
-        progressFill: "#ffffff",
-        statsBg: "bg-gray-700 border-gray-600"
+        progressFill: "#ffffff"
       };
     } else {
       return {
         main: "min-h-screen bg-white text-black flex items-center justify-center p-4",
-        container: "bg-white text-black border-gray-300",
         card: "bg-white border border-gray-300 rounded-2xl shadow-xl p-6",
         textMuted: "text-gray-500",
-        textNormal: "text-gray-700",
-        buttonPrimary: "bg-black text-white hover:bg-gray-800",
-        buttonSecondary: "border border-gray-300 text-gray-700 hover:border-gray-400",
+        buttonPrimary: "bg-black text-white hover:bg-gray-800 px-8 py-3 rounded-lg font-medium transition-colors duration-200 text-sm",
+        buttonSecondary: "border border-gray-300 text-gray-700 hover:border-gray-400 px-8 py-3 rounded-lg font-medium transition-colors duration-200 text-sm",
         progressBg: "#f3f4f6",
-        progressFill: "#000000",
-        statsBg: "bg-gray-50 border-gray-200"
+        progressFill: "#000000"
       };
     }
   };
@@ -210,10 +183,10 @@ export default function Home() {
     <div className={styles.main}>
       <div className={`${styles.card} w-full max-w-sm`}>
         
-        {/* Header with Dark Mode Toggle */}
+        {/* Header */}
         <div className="flex justify-between items-center mb-8">
           <div className="text-left">
-            <h1 className={`${styles.container} text-2xl font-light mb-1`}>POMODORO</h1>
+            <h1 className="text-2xl font-light mb-1">POMODORO</h1>
             <div className={styles.textMuted + " text-sm"}>
               {timerState.isFocus ? 'FOCUS TIME' : 'BREAK TIME'}
             </div>
@@ -221,39 +194,23 @@ export default function Home() {
           
           {/* Dark Mode Toggle */}
           <button
-            onClick={toggleDarkMode}
-            className={`${styles.buttonSecondary} p-2 rounded-lg transition-colors duration-200`}
+            onClick={() => setDarkMode(!darkMode)}
+            className="p-2 rounded-lg border border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500 transition-colors duration-200"
           >
             {darkMode ? '☀️' : '🌙'}
           </button>
         </div>
 
-        {/* Circular Progress Bar */}
+        {/* Circular Progress */}
         <div className="relative w-64 h-64 mx-auto mb-8">
           <svg className="w-full h-full transform -rotate-90">
-            <circle
-              cx="50%"
-              cy="50%"
-              r={radius}
-              stroke={styles.progressBg}
-              strokeWidth="3"
-              fill="none"
-            />
-            <circle
-              cx="50%"
-              cy="50%"
-              r={radius}
-              stroke={styles.progressFill}
-              strokeWidth="3"
-              fill="none"
-              strokeLinecap="round"
-              strokeDasharray={circumference}
-              strokeDashoffset={strokeDashoffset}
-            />
+            <circle cx="50%" cy="50%" r={radius} stroke={styles.progressBg} strokeWidth="3" fill="none" />
+            <circle cx="50%" cy="50%" r={radius} stroke={styles.progressFill} strokeWidth="3" fill="none"
+              strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={strokeDashoffset} />
           </svg>
           
           <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <div className={`${styles.container} text-5xl font-light tracking-tight`}>
+            <div className="text-5xl font-light tracking-tight">
               {formatTime(timerState.timeLeft)}
             </div>
             <div className={styles.textMuted + " text-xs mt-2 tracking-wide"}>
@@ -265,59 +222,46 @@ export default function Home() {
         {/* Controls */}
         <div className="flex justify-center space-x-3 mb-8">
           {timerState.isRunning ? (
-            <button
-              onClick={pauseTimer}
-              className={`${styles.buttonSecondary} px-8 py-3 rounded-lg font-medium transition-colors duration-200 text-sm`}
-            >
+            <button onClick={pauseTimer} className={styles.buttonSecondary}>
               PAUSE
             </button>
           ) : (
-            <button
-              onClick={startTimer}
-              className={`${styles.buttonPrimary} px-8 py-3 rounded-lg font-medium transition-colors duration-200 text-sm`}
-            >
+            <button onClick={startTimer} className={styles.buttonPrimary}>
               START
             </button>
           )}
-          
-          <button
-            onClick={resetTimer}
-            className={`${styles.buttonSecondary} px-8 py-3 rounded-lg font-medium transition-colors duration-200 text-sm`}
-          >
+          <button onClick={resetTimer} className={styles.buttonSecondary}>
             RESET
           </button>
         </div>
 
         {/* Mode Switch */}
         <div className="text-center mb-8">
-          <button
-            onClick={switchMode}
-            className={`${styles.buttonSecondary} px-6 py-2 rounded-lg font-medium transition-colors duration-200 text-xs tracking-wide`}
-          >
+          <button onClick={switchMode} className="px-6 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg font-medium transition-colors duration-200 text-xs tracking-wide hover:border-gray-400 dark:hover:border-gray-500">
             {timerState.isFocus ? 'SWITCH TO BREAK' : 'SWITCH TO FOCUS'}
           </button>
         </div>
 
         {/* Stats */}
-        <div className={"border-t pt-6 " + styles.border}>
+        <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
           <div className="grid grid-cols-3 gap-4 text-center">
             <div>
-              <div className={`${styles.container} text-2xl font-light`}>{stats.totalSessions}</div>
+              <div className="text-2xl font-light">{stats.totalSessions}</div>
               <div className={styles.textMuted + " text-xs mt-1"}>TOTAL</div>
             </div>
             <div>
-              <div className={`${styles.container} text-2xl font-light`}>{stats.consecutiveSessions}</div>
+              <div className="text-2xl font-light">{stats.consecutiveSessions}</div>
               <div className={styles.textMuted + " text-xs mt-1"}>STREAK</div>
             </div>
             <div>
-              <div className={`${styles.container} text-2xl font-light`}>{stats.nextLongBreak}</div>
+              <div className="text-2xl font-light">{stats.nextLongBreak}</div>
               <div className={styles.textMuted + " text-xs mt-1"}>TO LONG BREAK</div>
             </div>
           </div>
           
           {stats.isLongBreakNext && (
-            <div className={`${styles.statsBg} mt-4 p-3 rounded-lg border`}>
-              <span className={styles.textNormal + " text-xs"}>Next break: 15 minutes</span>
+            <div className="mt-4 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+              <span className="text-xs text-gray-700 dark:text-gray-300">Next break: 15 minutes</span>
             </div>
           )}
         </div>
@@ -327,7 +271,7 @@ export default function Home() {
           <div className={styles.textMuted + " text-xs space-y-1"}>
             <div>25min focus • 5min break</div>
             <div>4 sessions = 15min long break</div>
-            <div className="pt-2">Press D to toggle dark mode</div>
+            <div className="pt-2">Press D for dark mode</div>
           </div>
         </div>
       </div>

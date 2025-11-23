@@ -21,6 +21,7 @@ export default function Home() {
 
   const [isLoading, setIsLoading] = useState(true);
   const [darkMode, setDarkMode] = useState(false);
+  const [connectionError, setConnectionError] = useState(false);
   const [audio] = useState(typeof Audio !== "undefined" ? new Audio("/alarm.mp3") : null);
 
   // Initialize
@@ -29,7 +30,6 @@ export default function Home() {
     if (savedMode !== null) {
       setDarkMode(savedMode === 'true');
     }
-    setIsLoading(false);
   }, []);
 
   // Apply dark mode
@@ -39,20 +39,38 @@ export default function Home() {
 
   // Fetch timer state
   useEffect(() => {
+    let isSubscribed = true;
+    
     const fetchTimerState = async () => {
       try {
         const response = await fetch(`${API_BASE_URL}/api/timer/state`);
+        if (!response.ok) throw new Error('Network response was not ok');
+        
         const state = await response.json();
-        setTimerState(state);
+        if (isSubscribed) {
+          setTimerState(state);
+          setConnectionError(false);
+          setIsLoading(false);
+        }
       } catch (error) {
-        console.log('Backend not connected');
+        console.log('Backend connection error:', error);
+        if (isSubscribed) {
+          setConnectionError(true);
+          setIsLoading(false);
+        }
       }
     };
 
     fetchTimerState();
-    const interval = setInterval(fetchTimerState, 1000);
-    return () => clearInterval(interval);
-  }, []);
+    
+    // Only poll if timer is running
+    const interval = setInterval(fetchTimerState, timerState.isRunning ? 1000 : 5000);
+    
+    return () => {
+      isSubscribed = false;
+      clearInterval(interval);
+    };
+  }, [timerState.isRunning]);
 
   // Fetch stats
   useEffect(() => {
@@ -67,7 +85,7 @@ export default function Home() {
     };
 
     fetchStats();
-    const interval = setInterval(fetchStats, 5000);
+    const interval = setInterval(fetchStats, 10000); // Every 10 seconds
     return () => clearInterval(interval);
   }, []);
 
@@ -121,18 +139,23 @@ export default function Home() {
   const circumference = 2 * Math.PI * radius;
   const strokeDashoffset = circumference - (progress / 100) * circumference;
 
-  // API calls
+  // API calls with better error handling
   const apiCall = async (endpoint) => {
     try {
       const response = await fetch(`${API_BASE_URL}${endpoint}`, {
         method: 'POST'
       });
+      
+      if (!response.ok) throw new Error('Network response was not ok');
+      
       const data = await response.json();
       if (data.success) {
         setTimerState(data.state);
+        setConnectionError(false);
       }
     } catch (error) {
       console.error('API error:', error);
+      setConnectionError(true);
     }
   };
 
@@ -145,8 +168,8 @@ export default function Home() {
   const getStyles = () => {
     if (darkMode) {
       return {
-        main: "min-h-screen bg-gray-900 text-white flex items-center justify-center p-4",
-        card: "bg-gray-800 border border-gray-700 rounded-2xl shadow-xl p-6",
+        main: "min-h-screen bg-gray-900 text-white flex items-center justify-center p-4 transition-colors duration-200",
+        card: "bg-gray-800 border border-gray-700 rounded-2xl shadow-xl p-6 transition-colors duration-200",
         textMuted: "text-gray-400",
         buttonPrimary: "bg-white text-black hover:bg-gray-200 px-8 py-3 rounded-lg font-medium transition-colors duration-200 text-sm",
         buttonSecondary: "border border-gray-600 text-gray-300 hover:border-gray-500 px-8 py-3 rounded-lg font-medium transition-colors duration-200 text-sm",
@@ -155,8 +178,8 @@ export default function Home() {
       };
     } else {
       return {
-        main: "min-h-screen bg-white text-black flex items-center justify-center p-4",
-        card: "bg-white border border-gray-300 rounded-2xl shadow-xl p-6",
+        main: "min-h-screen bg-white text-black flex items-center justify-center p-4 transition-colors duration-200",
+        card: "bg-white border border-gray-300 rounded-2xl shadow-xl p-6 transition-colors duration-200",
         textMuted: "text-gray-500",
         buttonPrimary: "bg-black text-white hover:bg-gray-800 px-8 py-3 rounded-lg font-medium transition-colors duration-200 text-sm",
         buttonSecondary: "border border-gray-300 text-gray-700 hover:border-gray-400 px-8 py-3 rounded-lg font-medium transition-colors duration-200 text-sm",
@@ -170,10 +193,10 @@ export default function Home() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-white flex items-center justify-center">
+      <div className="min-h-screen bg-white dark:bg-gray-900 flex items-center justify-center transition-colors duration-200">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-black mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading</p>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-black dark:border-white mx-auto mb-4"></div>
+          <p className="text-gray-600 dark:text-gray-400">Loading Timer...</p>
         </div>
       </div>
     );
@@ -182,6 +205,13 @@ export default function Home() {
   return (
     <div className={styles.main}>
       <div className={`${styles.card} w-full max-w-sm`}>
+        
+        {/* Connection Status */}
+        {connectionError && (
+          <div className="mb-4 p-3 bg-red-100 border border-red-300 rounded-lg text-red-700 text-sm text-center">
+            ⚠️ Connection issue - trying to reconnect...
+          </div>
+        )}
         
         {/* Header */}
         <div className="flex justify-between items-center mb-8">
@@ -196,6 +226,7 @@ export default function Home() {
           <button
             onClick={() => setDarkMode(!darkMode)}
             className="p-2 rounded-lg border border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500 transition-colors duration-200"
+            aria-label={darkMode ? "Switch to light mode" : "Switch to dark mode"}
           >
             {darkMode ? '☀️' : '🌙'}
           </button>
@@ -260,8 +291,8 @@ export default function Home() {
           </div>
           
           {stats.isLongBreakNext && (
-            <div className="mt-4 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
-              <span className="text-xs text-gray-700 dark:text-gray-300">Next break: 15 minutes</span>
+            <div className="mt-4 p-3 bg-yellow-100 dark:bg-yellow-900 rounded-lg border border-yellow-200 dark:border-yellow-800">
+              <span className="text-xs text-yellow-800 dark:text-yellow-200">🎉 Next break: 15 minutes!</span>
             </div>
           )}
         </div>
@@ -271,7 +302,7 @@ export default function Home() {
           <div className={styles.textMuted + " text-xs space-y-1"}>
             <div>25min focus • 5min break</div>
             <div>4 sessions = 15min long break</div>
-            <div className="pt-2">Press D for dark mode</div>
+            <div className="pt-2">Press D for dark mode • Space to start/pause</div>
           </div>
         </div>
       </div>

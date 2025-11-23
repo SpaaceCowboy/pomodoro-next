@@ -299,15 +299,15 @@ export default function Home() {
         <div className="flex justify-center space-x-3 mb-8">
           {timerState.isRunning ? (
             <button onClick={pauseTimer} className={styles.buttonSecondary}>
-              ⏸️ PAUSE
+              PAUSE
             </button>
           ) : (
             <button onClick={startTimer} className={styles.buttonPrimary}>
-              ▶️ START
+               START
             </button>
           )}
           <button onClick={resetTimer} className={styles.buttonSecondary}>
-            🔄 RESET
+             RESET
           </button>
         </div>
 
@@ -320,35 +320,36 @@ export default function Home() {
 
         {/* Stats */}
         <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
-          <div className="grid grid-cols-3 gap-4 text-center">
+          <div className="grid grid-cols-3 gap-4 text-center mb-4">
             <div>
-              <div className="text-2xl font-light">{stats.totalSessions}</div>
+              <div className="text-2xl font-bold text-blue-500">{stats.totalSessions}</div>
               <div className={styles.textMuted + " text-xs mt-1"}>TOTAL</div>
             </div>
             <div>
-              <div className="text-2xl font-light">{stats.consecutiveSessions}</div>
+              <div className="text-2xl font-bold text-green-500">{stats.consecutiveSessions}</div>
               <div className={styles.textMuted + " text-xs mt-1"}>STREAK</div>
             </div>
             <div>
-              <div className="text-2xl font-light">{stats.nextLongBreak}</div>
+              <div className="text-2xl font-bold text-purple-500">{stats.nextLongBreak}</div>
               <div className={styles.textMuted + " text-xs mt-1"}>TO LONG BREAK</div>
             </div>
           </div>
           
           {stats.isLongBreakNext && (
             <div className="mt-4 p-3 bg-yellow-100 dark:bg-yellow-900 rounded-lg border border-yellow-200 dark:border-yellow-800">
-              <span className="text-xs text-yellow-800 dark:text-yellow-200">
-                🎉 Next break: 15 minutes
+              <span className="text-xs text-yellow-800 dark:text-yellow-200 font-medium">
+                🎉 Next break will be 15 minutes!
               </span>
             </div>
           )}
         </div>
 
         {/* Instructions */}
-        <div className="mt-8 text-center">
+        <div className="mt-6 text-center">
           <div className={styles.textMuted + " text-xs space-y-1"}>
-            <div>25min focus • 5min break • 4 sessions = 15min long break</div>
-            <div className="pt-2">Space: Start/Pause • R: Reset • S: Switch • D: Dark Mode</div>
+            <div>25min focus • 5min break</div>
+            <div>4 sessions =  15min long break</div>
+            <div className="pt-2 font-medium">Space: Start/Pause • R: Reset • S: Switch • D: Dark Mode</div>
           </div>
         </div>
       </div>

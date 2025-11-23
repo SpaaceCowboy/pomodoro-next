@@ -1,7 +1,6 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
-// Use environment variable or fallback to your deployed backend
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://pomodoro-node.vercel.app';
 
 export default function Home() {
@@ -22,7 +21,8 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(true);
   const [darkMode, setDarkMode] = useState(false);
   const [connectionError, setConnectionError] = useState(false);
-  const [audio] = useState(typeof Audio !== "undefined" ? new Audio("/alarm.mp3") : null);
+  const audioRef = useRef(null);
+  const prevTimeLeftRef = useRef(25 * 60);
 
   // Initialize
   useEffect(() => {
@@ -30,6 +30,10 @@ export default function Home() {
     if (savedMode !== null) {
       setDarkMode(savedMode === 'true');
     }
+    
+    // Initialize audio
+    audioRef.current = new Audio('/alarm.mp3');
+    audioRef.current.volume = 0.5;
   }, []);
 
   // Apply dark mode
@@ -43,7 +47,13 @@ export default function Home() {
     
     const fetchTimerState = async () => {
       try {
-        const response = await fetch(`${API_BASE_URL}/api/timer/state`);
+        const response = await fetch(`${API_BASE_URL}/api/timer/state`, {
+          cache: 'no-cache',
+          headers: {
+            'Cache-Control': 'no-cache'
+          }
+        });
+        
         if (!response.ok) throw new Error('Network response was not ok');
         
         const state = await response.json();
@@ -63,8 +73,8 @@ export default function Home() {
 
     fetchTimerState();
     
-    // Only poll if timer is running
-    const interval = setInterval(fetchTimerState, timerState.isRunning ? 1000 : 5000);
+    // Poll more frequently when timer is running
+    const interval = setInterval(fetchTimerState, timerState.isRunning ? 500 : 2000);
     
     return () => {
       isSubscribed = false;
@@ -72,7 +82,7 @@ export default function Home() {
     };
   }, [timerState.isRunning]);
 
-  // Fetch stats
+  // Fetch stats separately
   useEffect(() => {
     const fetchStats = async () => {
       try {
@@ -85,16 +95,40 @@ export default function Home() {
     };
 
     fetchStats();
-    const interval = setInterval(fetchStats, 10000); // Every 10 seconds
+    const interval = setInterval(fetchStats, 3000);
     return () => clearInterval(interval);
   }, []);
 
-  // Play sound when timer completes
+  // Play sound when timer reaches 0
   useEffect(() => {
-    if (timerState.timeLeft === 0 && audio) {
-      audio.play().catch(e => console.log('Audio play failed'));
+    if (prevTimeLeftRef.current > 0 && timerState.timeLeft === 0) {
+      // Timer just reached 0
+      if (audioRef.current) {
+        audioRef.current.play().catch(e => console.log('Audio play failed:', e));
+      }
+      
+      // Show browser notification if permitted
+      if ('Notification' in window && Notification.permission === 'granted') {
+        new Notification(
+          timerState.isFocus ? 'Break Time! 🎉' : 'Focus Time! ⏰',
+          {
+            body: timerState.isFocus 
+              ? 'Great job! Time for a well-deserved break.' 
+              : 'Break is over! Ready to focus again?',
+            icon: '/favicon.ico'
+          }
+        );
+      }
     }
-  }, [timerState.timeLeft, audio]);
+    prevTimeLeftRef.current = timerState.timeLeft;
+  }, [timerState.timeLeft, timerState.isFocus]);
+
+  // Request notification permission
+  useEffect(() => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+  }, []);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -132,18 +166,22 @@ export default function Home() {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // Calculate progress
+  // Calculate progress for circular bar
   const totalTime = timerState.isFocus ? 25 * 60 : 5 * 60;
   const progress = ((totalTime - timerState.timeLeft) / totalTime) * 100;
   const radius = 45;
   const circumference = 2 * Math.PI * radius;
   const strokeDashoffset = circumference - (progress / 100) * circumference;
 
-  // API calls with better error handling
+  // API calls
   const apiCall = async (endpoint) => {
     try {
       const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-        method: 'POST'
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        cache: 'no-cache'
       });
       
       if (!response.ok) throw new Error('Network response was not ok');
@@ -152,6 +190,13 @@ export default function Home() {
       if (data.success) {
         setTimerState(data.state);
         setConnectionError(false);
+        
+        // Also update stats after mode-changing actions
+        if (endpoint === '/api/timer/switch' || endpoint === '/api/timer/start') {
+          const statsResponse = await fetch(`${API_BASE_URL}/api/timer/stats`);
+          const statsData = await statsResponse.json();
+          setStats(statsData);
+        }
       }
     } catch (error) {
       console.error('API error:', error);
@@ -172,9 +217,10 @@ export default function Home() {
         card: "bg-gray-800 border border-gray-700 rounded-2xl shadow-xl p-6 transition-colors duration-200",
         textMuted: "text-gray-400",
         buttonPrimary: "bg-white text-black hover:bg-gray-200 px-8 py-3 rounded-lg font-medium transition-colors duration-200 text-sm",
-        buttonSecondary: "border border-gray-600 text-gray-300 hover:border-gray-500 px-8 py-3 rounded-lg font-medium transition-colors duration-200 text-sm",
+        buttonSecondary: "border border-gray-600 text-gray-300 hover:border-gray-500 hover:text-white px-8 py-3 rounded-lg font-medium transition-colors duration-200 text-sm",
         progressBg: "#374151",
-        progressFill: "#ffffff"
+        progressFill: timerState.isFocus ? "#3b82f6" : "#10b981", // Blue for focus, green for break
+        statsBg: "bg-gray-700 border-gray-600"
       };
     } else {
       return {
@@ -182,9 +228,10 @@ export default function Home() {
         card: "bg-white border border-gray-300 rounded-2xl shadow-xl p-6 transition-colors duration-200",
         textMuted: "text-gray-500",
         buttonPrimary: "bg-black text-white hover:bg-gray-800 px-8 py-3 rounded-lg font-medium transition-colors duration-200 text-sm",
-        buttonSecondary: "border border-gray-300 text-gray-700 hover:border-gray-400 px-8 py-3 rounded-lg font-medium transition-colors duration-200 text-sm",
+        buttonSecondary: "border border-gray-300 text-gray-700 hover:border-gray-400 hover:text-black px-8 py-3 rounded-lg font-medium transition-colors duration-200 text-sm",
         progressBg: "#f3f4f6",
-        progressFill: "#000000"
+        progressFill: timerState.isFocus ? "#3b82f6" : "#10b981", // Blue for focus, green for break
+        statsBg: "bg-gray-50 border-gray-200"
       };
     }
   };
@@ -208,8 +255,8 @@ export default function Home() {
         
         {/* Connection Status */}
         {connectionError && (
-          <div className="mb-4 p-3 bg-red-100 border border-red-300 rounded-lg text-red-700 text-sm text-center">
-            ⚠️ Connection issue - trying to reconnect...
+          <div className="mb-4 p-3 bg-red-100 dark:bg-red-900 border border-red-300 dark:border-red-700 rounded-lg text-red-700 dark:text-red-300 text-sm text-center">
+            ⚠️ Connection issue - check your internet
           </div>
         )}
         
@@ -217,8 +264,9 @@ export default function Home() {
         <div className="flex justify-between items-center mb-8">
           <div className="text-left">
             <h1 className="text-2xl font-light mb-1">POMODORO</h1>
-            <div className={styles.textMuted + " text-sm"}>
+            <div className={`${styles.textMuted} text-sm font-medium`}>
               {timerState.isFocus ? 'FOCUS TIME' : 'BREAK TIME'}
+              {timerState.isRunning && ' • RUNNING'}
             </div>
           </div>
           
@@ -241,11 +289,11 @@ export default function Home() {
           </svg>
           
           <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <div className="text-5xl font-light tracking-tight">
+            <div className="text-5xl font-light tracking-tight mb-2">
               {formatTime(timerState.timeLeft)}
             </div>
-            <div className={styles.textMuted + " text-xs mt-2 tracking-wide"}>
-              {timerState.isRunning ? 'RUNNING' : 'PAUSED'}
+            <div className={`text-sm ${timerState.isFocus ? 'text-blue-500' : 'text-green-500'} font-medium`}>
+              {timerState.isFocus ? 'Stay Focused!' : 'Enjoy Your Break!'}
             </div>
           </div>
         </div>
@@ -254,55 +302,57 @@ export default function Home() {
         <div className="flex justify-center space-x-3 mb-8">
           {timerState.isRunning ? (
             <button onClick={pauseTimer} className={styles.buttonSecondary}>
-              PAUSE
+              ⏸️ PAUSE
             </button>
           ) : (
             <button onClick={startTimer} className={styles.buttonPrimary}>
-              START
+              ▶️ START
             </button>
           )}
           <button onClick={resetTimer} className={styles.buttonSecondary}>
-            RESET
+            🔄 RESET
           </button>
         </div>
 
         {/* Mode Switch */}
         <div className="text-center mb-8">
-          <button onClick={switchMode} className="px-6 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg font-medium transition-colors duration-200 text-xs tracking-wide hover:border-gray-400 dark:hover:border-gray-500">
-            {timerState.isFocus ? 'SWITCH TO BREAK' : 'SWITCH TO FOCUS'}
+          <button onClick={switchMode} className={`${styles.buttonSecondary} text-xs tracking-wide`}>
+            {timerState.isFocus ? '⏸️ SWITCH TO BREAK' : '🎯 SWITCH TO FOCUS'}
           </button>
         </div>
 
         {/* Stats */}
         <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
-          <div className="grid grid-cols-3 gap-4 text-center">
+          <div className="grid grid-cols-3 gap-4 text-center mb-4">
             <div>
-              <div className="text-2xl font-light">{stats.totalSessions}</div>
+              <div className="text-2xl font-bold text-blue-500">{stats.totalSessions}</div>
               <div className={styles.textMuted + " text-xs mt-1"}>TOTAL</div>
             </div>
             <div>
-              <div className="text-2xl font-light">{stats.consecutiveSessions}</div>
+              <div className="text-2xl font-bold text-green-500">{stats.consecutiveSessions}</div>
               <div className={styles.textMuted + " text-xs mt-1"}>STREAK</div>
             </div>
             <div>
-              <div className="text-2xl font-light">{stats.nextLongBreak}</div>
+              <div className="text-2xl font-bold text-purple-500">{stats.nextLongBreak}</div>
               <div className={styles.textMuted + " text-xs mt-1"}>TO LONG BREAK</div>
             </div>
           </div>
           
           {stats.isLongBreakNext && (
             <div className="mt-4 p-3 bg-yellow-100 dark:bg-yellow-900 rounded-lg border border-yellow-200 dark:border-yellow-800">
-              <span className="text-xs text-yellow-800 dark:text-yellow-200">🎉 Next break: 15 minutes!</span>
+              <span className="text-xs text-yellow-800 dark:text-yellow-200 font-medium">
+                🎉 Next break will be 15 minutes!
+              </span>
             </div>
           )}
         </div>
 
         {/* Instructions */}
-        <div className="mt-8 text-center">
+        <div className="mt-6 text-center">
           <div className={styles.textMuted + " text-xs space-y-1"}>
-            <div>25min focus • 5min break</div>
-            <div>4 sessions = 15min long break</div>
-            <div className="pt-2">Press D for dark mode • Space to start/pause</div>
+            <div>🎯 25min focus • ⏸️ 5min break</div>
+            <div>4 sessions = 🎉 15min long break</div>
+            <div className="pt-2 font-medium">Space: Start/Pause • R: Reset • S: Switch • D: Dark Mode</div>
           </div>
         </div>
       </div>

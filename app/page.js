@@ -1,6 +1,8 @@
 'use client';
 import { useState, useEffect } from 'react';
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+
 export default function Home() {
   const [timerState, setTimerState] = useState({
     isRunning: false,
@@ -38,7 +40,7 @@ export default function Home() {
   useEffect(() => {
     const fetchTimerState = async () => {
       try {
-        const response = await fetch('https://pomodoro-node.vercel.app/api/timer/state');
+        const response = await fetch('/api/timer/state');
         const state = await response.json();
         setTimerState(state);
       } catch (error) {
@@ -55,7 +57,7 @@ export default function Home() {
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const response = await fetch('Vhttps://pomodoro-node.vercel.app/api/timer/stats');
+        const response = await fetch('/api/timer/stats');
         const data = await response.json();
         setStats(data);
       } catch (error) {
@@ -121,8 +123,7 @@ export default function Home() {
   // Button handlers
   const startTimer = async () => {
     try {
-      const response = await fetch('hhttps://pomodoro-node.vercel.app/api/timer/start', { method: 'POST' });
-      const data = await response.json();
+      const data = await apiFetch('/api/timer/start', { method: 'POST' });
       setTimerState(data.state);
     } catch (error) {
       console.error('Error starting timer:', error);
@@ -131,8 +132,7 @@ export default function Home() {
 
   const pauseTimer = async () => {
     try {
-      const response = await fetch('https://pomodoro-node.vercel.app/api/timer/pause', { method: 'POST' });
-      const data = await response.json();
+      const data = await apiFetch('/api/timer/pause', { method: 'POST' });
       setTimerState(data.state);
     } catch (error) {
       console.error('Error pausing timer:', error);
@@ -141,8 +141,7 @@ export default function Home() {
 
   const resetTimer = async () => {
     try {
-      const response = await fetch('https://pomodoro-node.vercel.app/api/timer/reset', { method: 'POST' });
-      const data = await response.json();
+      const data = await apiFetch('/api/timer/reset', { method: 'POST' });
       setTimerState(data.state);
     } catch (error) {
       console.error('Error resetting timer:', error);
@@ -151,13 +150,13 @@ export default function Home() {
 
   const switchMode = async () => {
     try {
-      const response = await fetch('https://pomodoro-node.vercel.app/api/timer/switch', { method: 'POST' });
-      const data = await response.json();
+      const data = await apiFetch('/api/timer/switch', { method: 'POST' });
       setTimerState(data.state);
     } catch (error) {
       console.error('Error switching mode:', error);
     }
   };
+
 
   const toggleDarkMode = () => {
     setDarkMode(!darkMode);

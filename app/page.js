@@ -1,7 +1,6 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
 
-// Use your actual backend URL - make sure it's correct!
 const API_BASE_URL = 'https://pomodoro-node.vercel.app';
 
 export default function Home() {
@@ -22,7 +21,7 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(true);
   const [darkMode, setDarkMode] = useState(false);
   const [connectionError, setConnectionError] = useState(false);
-  const audioRef = useRef(null);
+  const pollingRef = useRef(null);
 
   // Initialize
   useEffect(() => {
@@ -30,78 +29,131 @@ export default function Home() {
     if (savedMode !== null) {
       setDarkMode(savedMode === 'true');
     }
-    checkBackendConnection();
+    initializeApp();
   }, []);
 
-  // Check backend connection
-  const checkBackendConnection = async () => {
+  const initializeApp = async () => {
     try {
-      console.log('Testing backend connection to:', API_BASE_URL);
+      // Test backend connection
       const response = await fetch(`${API_BASE_URL}/api/health`);
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
+      if (!response.ok) throw new Error('Backend not responding');
       
       const data = await response.json();
-      console.log('Backend response:', data);
+      console.log('✅ Backend connected');
+      
+      // Load initial state from backend
+      await fetchTimerState();
+      await fetchStats();
+      
       setConnectionError(false);
       setIsLoading(false);
       
-      // Start fetching timer state if backend is working
-      fetchTimerState();
-      fetchStats();
+      // Start polling for updates
+      startPolling();
       
     } catch (error) {
-      console.error('Backend connection failed:', error);
+      console.error('❌ Backend connection failed:', error);
       setConnectionError(true);
       setIsLoading(false);
     }
   };
 
-  // Apply dark mode
-  useEffect(() => {
-    localStorage.setItem('darkMode', darkMode.toString());
-  }, [darkMode]);
-
-  // Fetch timer state
+  // Fetch timer state from backend
   const fetchTimerState = async () => {
     try {
       const response = await fetch(`${API_BASE_URL}/api/timer/state`);
-      if (!response.ok) throw new Error('Network response was not ok');
+      if (!response.ok) throw new Error('Failed to fetch state');
       
       const state = await response.json();
       setTimerState(state);
       setConnectionError(false);
     } catch (error) {
-      console.log('Failed to fetch timer state');
+      console.error('Error fetching timer state:', error);
       setConnectionError(true);
     }
   };
 
-  // Fetch stats
+  // Fetch stats from backend
   const fetchStats = async () => {
     try {
       const response = await fetch(`${API_BASE_URL}/api/timer/stats`);
       const data = await response.json();
       setStats(data);
     } catch (error) {
-      console.log('Could not fetch stats');
+      console.error('Error fetching stats:', error);
     }
   };
 
-  // Set up polling
+  // Smart polling - faster when timer is running
+  const startPolling = () => {
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+    }
+
+    pollingRef.current = setInterval(() => {
+      fetchTimerState();
+    }, timerState.isRunning ? 1000 : 3000);
+  };
+
+  // Update polling when timer state changes
   useEffect(() => {
-    if (connectionError) return;
-
-    const timerInterval = setInterval(fetchTimerState, timerState.isRunning ? 1000 : 5000);
-    const statsInterval = setInterval(fetchStats, 10000);
-
+    if (!isLoading && !connectionError) {
+      startPolling();
+    }
+    
     return () => {
-      clearInterval(timerInterval);
-      clearInterval(statsInterval);
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+      }
     };
-  }, [timerState.isRunning, connectionError]);
+  }, [timerState.isRunning, isLoading, connectionError]);
+
+  // API calls to backend
+  const apiCall = async (endpoint) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+        method: 'POST'
+      });
+      
+      if (!response.ok) throw new Error('API call failed');
+      
+      const data = await response.json();
+      if (data.success) {
+        setTimerState(data.state);
+        setConnectionError(false);
+        // Refresh stats
+        setTimeout(fetchStats, 100);
+      }
+    } catch (error) {
+      console.error('API error:', error);
+      setConnectionError(true);
+    }
+  };
+
+  const startTimer = () => apiCall('/api/timer/start');
+  const pauseTimer = () => apiCall('/api/timer/pause');
+  const resetTimer = () => apiCall('/api/timer/reset');
+  const switchMode = () => apiCall('/api/timer/switch');
+
+  // Retry connection
+  const retryConnection = () => {
+    setIsLoading(true);
+    initializeApp();
+  };
+
+  // Format time
+  const formatTime = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  // Calculate progress
+  const totalTime = timerState.isFocus ? 25 * 60 : 5 * 60;
+  const progress = ((totalTime - timerState.timeLeft) / totalTime) * 100;
+  const radius = 45;
+  const circumference = 2 * Math.PI * radius;
+  const strokeDashoffset = circumference - (progress / 100) * circumference;
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -132,53 +184,12 @@ export default function Home() {
     return () => window.removeEventListener('keydown', handleKeyPress);
   }, [timerState.isRunning, darkMode]);
 
-  // Format time
-  const formatTime = (seconds) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
+  // Apply dark mode
+  useEffect(() => {
+    localStorage.setItem('darkMode', darkMode.toString());
+  }, [darkMode]);
 
-  // Calculate progress
-  const totalTime = timerState.isFocus ? 25 * 60 : 5 * 60;
-  const progress = ((totalTime - timerState.timeLeft) / totalTime) * 100;
-  const radius = 45;
-  const circumference = 2 * Math.PI * radius;
-  const strokeDashoffset = circumference - (progress / 100) * circumference;
-
-  // API calls
-  const apiCall = async (endpoint) => {
-    try {
-      const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-        method: 'POST'
-      });
-      
-      if (!response.ok) throw new Error('Network response was not ok');
-      
-      const data = await response.json();
-      if (data.success) {
-        setTimerState(data.state);
-        setConnectionError(false);
-        fetchStats(); // Refresh stats after action
-      }
-    } catch (error) {
-      console.error('API error:', error);
-      setConnectionError(true);
-    }
-  };
-
-  const startTimer = () => apiCall('/api/timer/start');
-  const pauseTimer = () => apiCall('/api/timer/pause');
-  const resetTimer = () => apiCall('/api/timer/reset');
-  const switchMode = () => apiCall('/api/timer/switch');
-
-  // Retry connection
-  const retryConnection = () => {
-    setIsLoading(true);
-    checkBackendConnection();
-  };
-
-  // Styles based on dark mode
+  // Styles
   const getStyles = () => {
     if (darkMode) {
       return {
@@ -188,7 +199,7 @@ export default function Home() {
         buttonPrimary: "bg-white text-black hover:bg-gray-200 px-8 py-3 rounded-lg font-medium transition-colors text-sm",
         buttonSecondary: "border border-gray-600 text-gray-300 hover:border-gray-500 px-8 py-3 rounded-lg font-medium transition-colors text-sm",
         progressBg: "#374151",
-        progressFill: "#ffffff"
+        progressFill: timerState.isFocus ? "#3b82f6" : "#10b981"
       };
     } else {
       return {
@@ -198,7 +209,7 @@ export default function Home() {
         buttonPrimary: "bg-black text-white hover:bg-gray-800 px-8 py-3 rounded-lg font-medium transition-colors text-sm",
         buttonSecondary: "border border-gray-300 text-gray-700 hover:border-gray-400 px-8 py-3 rounded-lg font-medium transition-colors text-sm",
         progressBg: "#f3f4f6",
-        progressFill: "#000000"
+        progressFill: timerState.isFocus ? "#3b82f6" : "#10b981"
       };
     }
   };
@@ -210,7 +221,7 @@ export default function Home() {
       <div className="min-h-screen bg-white dark:bg-gray-900 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-black dark:border-white mx-auto mb-4"></div>
-          <p className="text-gray-600 dark:text-gray-400">Connecting to server...</p>
+          <p className="text-gray-600 dark:text-gray-400">Connecting to backend...</p>
         </div>
       </div>
     );
@@ -222,8 +233,8 @@ export default function Home() {
         <div className="text-center max-w-sm">
           <div className="text-6xl mb-4">🔌</div>
           <h2 className="text-2xl font-bold mb-2 dark:text-white">Connection Failed</h2>
-          <p className="text-gray-600 dark:text-gray-400 mb-6">
-            Cannot connect to the Pomodoro server. This might be a temporary issue.
+          <p className="text-gray-600 dark:text-gray-400 mb-4">
+            Cannot connect to backend server.
           </p>
           <button
             onClick={retryConnection}
@@ -232,7 +243,7 @@ export default function Home() {
             🔄 Retry Connection
           </button>
           <div className="mt-4 text-sm text-gray-500 dark:text-gray-400">
-            Backend URL: {API_BASE_URL}
+            Backend: {API_BASE_URL}
           </div>
         </div>
       </div>
@@ -244,11 +255,9 @@ export default function Home() {
       <div className={`${styles.card} w-full max-w-sm`}>
         
         {/* Connection Status */}
-        {connectionError && (
-          <div className="mb-4 p-3 bg-red-100 dark:bg-red-900 border border-red-300 dark:border-red-700 rounded-lg text-red-700 dark:text-red-300 text-sm text-center">
-            ⚠️ Connection issue - <button onClick={retryConnection} className="underline">Retry</button>
-          </div>
-        )}
+        <div className="mb-4 p-3 bg-green-100 dark:bg-green-900 rounded-lg text-green-700 dark:text-green-300 text-sm text-center">
+          ✅ Connected to backend • {timerState.isRunning ? 'LIVE' : 'READY'}
+        </div>
         
         {/* Header */}
         <div className="flex justify-between items-center mb-8">
@@ -256,10 +265,10 @@ export default function Home() {
             <h1 className="text-2xl font-light mb-1">POMODORO</h1>
             <div className={styles.textMuted + " text-sm"}>
               {timerState.isFocus ? 'FOCUS TIME' : 'BREAK TIME'}
+              {timerState.isRunning && ' • RUNNING'}
             </div>
           </div>
           
-          {/* Dark Mode Toggle */}
           <button
             onClick={() => setDarkMode(!darkMode)}
             className="p-2 rounded-lg border border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500 transition-colors"
@@ -290,15 +299,15 @@ export default function Home() {
         <div className="flex justify-center space-x-3 mb-8">
           {timerState.isRunning ? (
             <button onClick={pauseTimer} className={styles.buttonSecondary}>
-              PAUSE
+              ⏸️ PAUSE
             </button>
           ) : (
             <button onClick={startTimer} className={styles.buttonPrimary}>
-              START
+              ▶️ START
             </button>
           )}
           <button onClick={resetTimer} className={styles.buttonSecondary}>
-            RESET
+            🔄 RESET
           </button>
         </div>
 
@@ -327,8 +336,10 @@ export default function Home() {
           </div>
           
           {stats.isLongBreakNext && (
-            <div className="mt-4 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
-              <span className="text-xs text-gray-700 dark:text-gray-300">Next break: 15 minutes</span>
+            <div className="mt-4 p-3 bg-yellow-100 dark:bg-yellow-900 rounded-lg border border-yellow-200 dark:border-yellow-800">
+              <span className="text-xs text-yellow-800 dark:text-yellow-200">
+                🎉 Next break: 15 minutes
+              </span>
             </div>
           )}
         </div>
@@ -336,9 +347,8 @@ export default function Home() {
         {/* Instructions */}
         <div className="mt-8 text-center">
           <div className={styles.textMuted + " text-xs space-y-1"}>
-            <div>25min focus • 5min break</div>
-            <div>4 sessions = 15min long break</div>
-            <div className="pt-2">Press D for dark mode</div>
+            <div>25min focus • 5min break • 4 sessions = 15min long break</div>
+            <div className="pt-2">Space: Start/Pause • R: Reset • S: Switch • D: Dark Mode</div>
           </div>
         </div>
       </div>

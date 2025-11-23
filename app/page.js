@@ -1,7 +1,6 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
-// Your backend URL
 const API_BASE_URL = 'https://pomodoro-node.vercel.app';
 
 export default function Home() {
@@ -22,6 +21,7 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(true);
   const [darkMode, setDarkMode] = useState(false);
   const [connectionError, setConnectionError] = useState(false);
+  const pollingRef = useRef(null);
 
   // Initialize
   useEffect(() => {
@@ -29,38 +29,40 @@ export default function Home() {
     if (savedMode !== null) {
       setDarkMode(savedMode === 'true');
     }
-    testBackendConnection();
+    initializeApp();
   }, []);
 
-  // Test backend connection
-  const testBackendConnection = async () => {
+  const initializeApp = async () => {
     try {
-      console.log('Testing backend connection...');
-      const response = await fetch(`${API_BASE_URL}/api/health`);
+      // Test backend connection
+      const healthResponse = await fetch(`${API_BASE_URL}/api/health`);
+      if (!healthResponse.ok) throw new Error('Backend not responding');
       
-      if (!response.ok) throw new Error('Backend not responding');
+      const healthData = await healthResponse.json();
+      console.log('Backend health:', healthData);
       
-      const data = await response.json();
-      console.log('✅ Backend connected:', data);
+      // Load initial state
+      await fetchTimerState();
+      await fetchStats();
+      
       setConnectionError(false);
       setIsLoading(false);
       
-      // Load initial data
-      fetchTimerState();
-      fetchStats();
+      // Start polling
+      startPolling();
       
     } catch (error) {
-      console.error('❌ Backend connection failed:', error);
+      console.error('Initialization failed:', error);
       setConnectionError(true);
       setIsLoading(false);
     }
   };
 
-  // Fetch timer state from backend
+  // Fetch timer state
   const fetchTimerState = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/timer/state`);
-      if (!response.ok) throw new Error('Failed to fetch timer state');
+      const response = await fetch(`${API_BASE_URL}/api/timer/state?t=${Date.now()}`);
+      if (!response.ok) throw new Error('Failed to fetch state');
       
       const state = await response.json();
       setTimerState(state);
@@ -71,10 +73,10 @@ export default function Home() {
     }
   };
 
-  // Fetch stats from backend
+  // Fetch stats
   const fetchStats = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/timer/stats`);
+      const response = await fetch(`${API_BASE_URL}/api/timer/stats?t=${Date.now()}`);
       const data = await response.json();
       setStats(data);
     } catch (error) {
@@ -82,19 +84,42 @@ export default function Home() {
     }
   };
 
-  // Set up polling to backend
+  // Smart polling - faster when timer is running
+  const startPolling = () => {
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+    }
+
+    pollingRef.current = setInterval(() => {
+      fetchTimerState();
+      // Update stats less frequently
+      if (Date.now() % 5000 < 1000) { // Every ~5 seconds
+        fetchStats();
+      }
+    }, timerState.isRunning ? 500 : 2000);
+  };
+
+  // Restart polling when timer running state changes
   useEffect(() => {
-    if (connectionError) return;
+    if (!isLoading && !connectionError) {
+      startPolling();
+    }
+    
+    return () => {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+      }
+    };
+  }, [timerState.isRunning, isLoading, connectionError]);
 
-    const interval = setInterval(fetchTimerState, 2000);
-    return () => clearInterval(interval);
-  }, [connectionError]);
-
-  // API calls to backend
+  // API calls
   const apiCall = async (endpoint) => {
     try {
       const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-        method: 'POST'
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        }
       });
       
       if (!response.ok) throw new Error('API call failed');
@@ -103,7 +128,7 @@ export default function Home() {
       if (data.success) {
         setTimerState(data.state);
         setConnectionError(false);
-        // Refresh stats
+        // Force immediate stats update
         setTimeout(fetchStats, 100);
       }
     } catch (error) {
@@ -116,6 +141,12 @@ export default function Home() {
   const pauseTimer = () => apiCall('/api/timer/pause');
   const resetTimer = () => apiCall('/api/timer/reset');
   const switchMode = () => apiCall('/api/timer/switch');
+
+  // Retry connection
+  const retryConnection = () => {
+    setIsLoading(true);
+    initializeApp();
+  };
 
   // Format time
   const formatTime = (seconds) => {
@@ -165,7 +196,7 @@ export default function Home() {
     localStorage.setItem('darkMode', darkMode.toString());
   }, [darkMode]);
 
-  // Styles based on dark mode
+  // Styles
   const getStyles = () => {
     if (darkMode) {
       return {
@@ -175,7 +206,7 @@ export default function Home() {
         buttonPrimary: "bg-white text-black hover:bg-gray-200 px-8 py-3 rounded-lg font-medium transition-colors text-sm",
         buttonSecondary: "border border-gray-600 text-gray-300 hover:border-gray-500 px-8 py-3 rounded-lg font-medium transition-colors text-sm",
         progressBg: "#374151",
-        progressFill: "#ffffff"
+        progressFill: timerState.isFocus ? "#3b82f6" : "#10b981"
       };
     } else {
       return {
@@ -185,7 +216,7 @@ export default function Home() {
         buttonPrimary: "bg-black text-white hover:bg-gray-800 px-8 py-3 rounded-lg font-medium transition-colors text-sm",
         buttonSecondary: "border border-gray-300 text-gray-700 hover:border-gray-400 px-8 py-3 rounded-lg font-medium transition-colors text-sm",
         progressBg: "#f3f4f6",
-        progressFill: "#000000"
+        progressFill: timerState.isFocus ? "#3b82f6" : "#10b981"
       };
     }
   };
@@ -197,7 +228,7 @@ export default function Home() {
       <div className="min-h-screen bg-white dark:bg-gray-900 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-black dark:border-white mx-auto mb-4"></div>
-          <p className="text-gray-600 dark:text-gray-400">Connecting to backend...</p>
+          <p className="text-gray-600 dark:text-gray-400">Initializing timer...</p>
         </div>
       </div>
     );
@@ -208,21 +239,16 @@ export default function Home() {
       <div className="min-h-screen bg-white dark:bg-gray-900 flex items-center justify-center p-4">
         <div className="text-center max-w-sm">
           <div className="text-6xl mb-4">🔌</div>
-          <h2 className="text-2xl font-bold mb-2 dark:text-white">Backend Connection Failed</h2>
+          <h2 className="text-2xl font-bold mb-2 dark:text-white">Connection Error</h2>
           <p className="text-gray-600 dark:text-gray-400 mb-4">
             Cannot connect to backend server.
           </p>
-          <div className="space-y-2">
-            <button
-              onClick={testBackendConnection}
-              className="bg-black dark:bg-white text-white dark:text-black px-6 py-3 rounded-lg font-medium block w-full"
-            >
-              🔄 Retry Connection
-            </button>
-            <div className="text-sm text-gray-500 dark:text-gray-400">
-              Backend: {API_BASE_URL}
-            </div>
-          </div>
+          <button
+            onClick={retryConnection}
+            className="bg-black dark:bg-white text-white dark:text-black px-6 py-3 rounded-lg font-medium hover:bg-gray-800 dark:hover:bg-gray-200 transition-colors"
+          >
+            🔄 Retry Connection
+          </button>
         </div>
       </div>
     );
@@ -233,11 +259,9 @@ export default function Home() {
       <div className={`${styles.card} w-full max-w-sm`}>
         
         {/* Connection Status */}
-        {connectionError && (
-          <div className="mb-4 p-3 bg-red-100 dark:bg-red-900 rounded-lg text-red-700 dark:text-red-300 text-sm text-center">
-            ⚠️ Connection issue - <button onClick={testBackendConnection} className="underline font-medium">Retry</button>
-          </div>
-        )}
+        <div className="mb-4 p-3 bg-green-100 dark:bg-green-900 rounded-lg text-green-700 dark:text-green-300 text-sm text-center">
+          ✅ Connected to backend
+        </div>
         
         {/* Header */}
         <div className="flex justify-between items-center mb-8">
@@ -249,7 +273,6 @@ export default function Home() {
             </div>
           </div>
           
-          {/* Dark Mode Toggle */}
           <button
             onClick={() => setDarkMode(!darkMode)}
             className="p-2 rounded-lg border border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500 transition-colors"
@@ -280,15 +303,15 @@ export default function Home() {
         <div className="flex justify-center space-x-3 mb-8">
           {timerState.isRunning ? (
             <button onClick={pauseTimer} className={styles.buttonSecondary}>
-              PAUSE
+              ⏸️ PAUSE
             </button>
           ) : (
             <button onClick={startTimer} className={styles.buttonPrimary}>
-              START
+              ▶️ START
             </button>
           )}
           <button onClick={resetTimer} className={styles.buttonSecondary}>
-            RESET
+            🔄 RESET
           </button>
         </div>
 
@@ -315,22 +338,14 @@ export default function Home() {
               <div className={styles.textMuted + " text-xs mt-1"}>TO LONG BREAK</div>
             </div>
           </div>
-          
-          {stats.isLongBreakNext && (
-            <div className="mt-4 p-3 bg-yellow-100 dark:bg-yellow-900 rounded-lg border border-yellow-200 dark:border-yellow-800">
-              <span className="text-xs text-yellow-800 dark:text-yellow-200">
-                🎉 Next break: 15 minutes
-              </span>
-            </div>
-          )}
         </div>
 
         {/* Instructions */}
         <div className="mt-8 text-center">
           <div className={styles.textMuted + " text-xs space-y-1"}>
-            <div>✅ Connected to backend</div>
             <div>25min focus • 5min break</div>
             <div>4 sessions = 15min long break</div>
+            <div className="pt-2">Space: Start/Pause • R: Reset • S: Switch</div>
           </div>
         </div>
       </div>

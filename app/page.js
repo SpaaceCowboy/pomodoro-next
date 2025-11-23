@@ -336,22 +336,22 @@ export default function Home() {
         <div className="flex justify-center space-x-3 mb-8">
           {timerState.isRunning ? (
             <button onClick={pauseTimer} className={styles.buttonSecondary}>
-              ⏸️ PAUSE
+               PAUSE
             </button>
           ) : (
             <button onClick={startTimer} className={styles.buttonPrimary}>
-              ▶️ START
+              START
             </button>
           )}
           <button onClick={resetTimer} className={styles.buttonSecondary}>
-            🔄 RESET
+            RESET
           </button>
         </div>
 
         {/* Mode Switch */}
         <div className="text-center mb-8">
           <button onClick={switchMode} className={`${styles.buttonSecondary} text-xs tracking-wide`}>
-            {timerState.isFocus ? '⏸️ SWITCH TO BREAK' : '🎯 SWITCH TO FOCUS'}
+            {timerState.isFocus ? 'SWITCH TO BREAK' : ' SWITCH TO FOCUS'}
           </button>
         </div>
 
@@ -375,7 +375,7 @@ export default function Home() {
           {stats.isLongBreakNext && (
             <div className="mt-4 p-3 bg-yellow-100 dark:bg-yellow-900 rounded-lg border border-yellow-200 dark:border-yellow-800">
               <span className="text-xs text-yellow-800 dark:text-yellow-200 font-medium">
-                🎉 Next break will be 15 minutes!
+                Next break will be 15 minutes!
               </span>
             </div>
           )}
@@ -384,8 +384,8 @@ export default function Home() {
         {/* Instructions */}
         <div className="mt-6 text-center">
           <div className={styles.textMuted + " text-xs space-y-1"}>
-            <div>🎯 25min focus • ⏸️ 5min break</div>
-            <div>4 sessions = 🎉 15min long break</div>
+            <div>25min focus •  5min break</div>
+            <div>4 sessions =  15min long break</div>
             <div className="pt-2 font-medium">Space: Start/Pause • R: Reset • S: Switch • D: Dark Mode</div>
           </div>
         </div>

@@ -38,7 +38,7 @@ export default function Home() {
   useEffect(() => {
     const fetchTimerState = async () => {
       try {
-        const response = await fetch('http://localhost:5000/api/timer/state');
+        const response = await fetch('https://pomodoro-node.vercel.app/api/timer/state');
         const state = await response.json();
         setTimerState(state);
       } catch (error) {
@@ -55,7 +55,7 @@ export default function Home() {
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const response = await fetch('http://localhost:5000/api/timer/stats');
+        const response = await fetch('Vhttps://pomodoro-node.vercel.app/api/timer/stats');
         const data = await response.json();
         setStats(data);
       } catch (error) {
@@ -121,7 +121,7 @@ export default function Home() {
   // Button handlers
   const startTimer = async () => {
     try {
-      const response = await fetch('http://localhost:5000/api/timer/start', { method: 'POST' });
+      const response = await fetch('hhttps://pomodoro-node.vercel.app/api/timer/start', { method: 'POST' });
       const data = await response.json();
       setTimerState(data.state);
     } catch (error) {
@@ -131,7 +131,7 @@ export default function Home() {
 
   const pauseTimer = async () => {
     try {
-      const response = await fetch('http://localhost:5000/api/timer/pause', { method: 'POST' });
+      const response = await fetch('https://pomodoro-node.vercel.app/api/timer/pause', { method: 'POST' });
       const data = await response.json();
       setTimerState(data.state);
     } catch (error) {
@@ -141,7 +141,7 @@ export default function Home() {
 
   const resetTimer = async () => {
     try {
-      const response = await fetch('http://localhost:5000/api/timer/reset', { method: 'POST' });
+      const response = await fetch('https://pomodoro-node.vercel.app/api/timer/reset', { method: 'POST' });
       const data = await response.json();
       setTimerState(data.state);
     } catch (error) {
@@ -151,7 +151,7 @@ export default function Home() {
 
   const switchMode = async () => {
     try {
-      const response = await fetch('http://localhost:5000/api/timer/switch', { method: 'POST' });
+      const response = await fetch('https://pomodoro-node.vercel.app/api/timer/switch', { method: 'POST' });
       const data = await response.json();
       setTimerState(data.state);
     } catch (error) {
